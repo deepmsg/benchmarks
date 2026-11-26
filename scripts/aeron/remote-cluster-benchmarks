@@ -117,7 +117,11 @@ server_drivers=()
 declare -A drivers
 drivers=(['java']='' ['java-onload']='' ['c']='' ['c-onload']='' ['c-ef-vi']='' ['c-dpdk']='' ['c-ats']='' ['c-ats-onload']='' ['c-ats-ef-vi']='' ['c-ats-dpdk']='' ['deepmsg']='' ['deepmsg-cpp']='')
 cluster_service="${CLUSTER_SERVICE:-echo}"
-download_dir="${DIR}/.."
+# Where the results are pulled back to. The reference lands them under
+# `scripts/` beside this file; a batch that keeps its data in a directory of
+# its own sets BENCH_DOWNLOAD_DIR, so one run's tree cannot be mistaken for
+# another's (2026-11-26: the C6 cluster batch).
+download_dir="${BENCH_DOWNLOAD_DIR:-${DIR}/..}"
 
 
 while [[ $# -gt 0 ]]
