@@ -115,7 +115,7 @@ onload="onload --profile=latency "
 client_drivers=()
 server_drivers=()
 declare -A drivers
-drivers=(['java']='' ['java-onload']='' ['c']='' ['c-onload']='' ['c-ef-vi']='' ['c-dpdk']='' ['c-ats']='' ['c-ats-onload']='' ['c-ats-ef-vi']='' ['c-ats-dpdk']='')
+drivers=(['java']='' ['java-onload']='' ['c']='' ['c-onload']='' ['c-ef-vi']='' ['c-dpdk']='' ['c-ats']='' ['c-ats-onload']='' ['c-ats-ef-vi']='' ['c-ats-dpdk']='' ['deepmsg']='' ['deepmsg-cpp']='')
 cluster_service="${CLUSTER_SERVICE:-echo}"
 download_dir="${DIR}/.."
 
@@ -377,6 +377,14 @@ drivers['java-onload']="${driver_properties}; \
 
 drivers['c']="${driver_properties}; \
       $(start_media_driver "${scripts_path}/c-media-driver" "" "driver_cpu_node_var" "driver_non_isolated_cpu_cores_var" "driver_conductor_cpu_core_var" "driver_sender_cpu_core_var" "driver_receiver_cpu_core_var")"
+
+drivers['deepmsg']="${driver_properties}; \
+      export DEEPMSG_DRIVER=${DEEPMSG_DIR}/target/release/deepmsg-driver; \
+      $(start_media_driver "${scripts_path}/deepmsg-media-driver" "" "driver_cpu_node_var" "driver_non_isolated_cpu_cores_var" "driver_conductor_cpu_core_var" "driver_sender_cpu_core_var" "driver_receiver_cpu_core_var")"
+
+drivers['deepmsg-cpp']="${driver_properties}; \
+      export DEEPMSG_CPP_DRIVER=${DEEPMSG_CPP_DRIVER}; \
+      $(start_media_driver "${scripts_path}/deepmsg-cpp-media-driver" "" "driver_cpu_node_var" "driver_non_isolated_cpu_cores_var" "driver_conductor_cpu_core_var" "driver_sender_cpu_core_var" "driver_receiver_cpu_core_var")"
 
 drivers['c-onload']="${driver_properties}; \
       export EF_NO_FAIL=0 EF_RXQ_SIZE=${ef_vi_rxq_size} EF_TXQ_SIZE=${ef_vi_txq_size} \

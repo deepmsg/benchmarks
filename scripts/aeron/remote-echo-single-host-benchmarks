@@ -59,6 +59,11 @@ so_sndbuf="${AERON_SOCKET_SO_SNDBUF:-2m}"
 so_rcvbuf="${AERON_SOCKET_SO_RCVBUF:-2m}"
 rcv_initial_window="${AERON_RCV_INITIAL_WINDOW_LENGTH:-2m}"
 max_messages_per_send="${AERON_NETWORK_PUBLICATION_MAX_MESSAGES_PER_SEND:-2}"
+# deepmsg bench harness: allow the three throughput knobs to be set independently, which
+# the reference's own default (all three equal) cannot express. Both default to
+# max_messages_per_send, so upstream behaviour is unchanged when they are unset.
+receiver_io_vector_capacity="${AERON_RECEIVER_IO_VECTOR_CAPACITY:-${max_messages_per_send}}"
+sender_io_vector_capacity="${AERON_SENDER_IO_VECTOR_CAPACITY:-${max_messages_per_send}}"
 dpdk_config_overrides=""
 if [[ -v AERON_DPDK_MTU && -n ${AERON_DPDK_MTU} ]];
 then
@@ -216,8 +221,8 @@ aeron.socket.so_sndbuf=${so_sndbuf}\n\
 aeron.socket.so_rcvbuf=${so_rcvbuf}\n\
 aeron.rcv.initial.window.length=${rcv_initial_window}\n\
 aeron.network.publication.max.messages.per.send=${max_messages_per_send}\n\
-aeron.receiver.io.vector.capacity=${max_messages_per_send}\n\
-aeron.sender.io.vector.capacity=${max_messages_per_send}\n\
+aeron.receiver.io.vector.capacity=${receiver_io_vector_capacity}\n\
+aeron.sender.io.vector.capacity=${sender_io_vector_capacity}\n\
 \" > ${scripts_path}/benchmark.properties"
 
 supported_drivers['java']="${driver_properties}; \
@@ -229,6 +234,10 @@ supported_drivers['java-onload']="${driver_properties}; \
 
 supported_drivers['c']="${driver_properties}; \
       $(start_media_driver "${scripts_path}/c-media-driver" "" "driver_cpu_node_var" "driver_non_isolated_cpu_cores_var" "driver_conductor_cpu_core_var" "driver_sender_cpu_core_var" "driver_receiver_cpu_core_var")"
+supported_drivers['c-control']="${driver_properties}; \
+      $(start_media_driver "${scripts_path}/c-media-driver-c-control" "" "driver_cpu_node_var" "driver_non_isolated_cpu_cores_var" "driver_conductor_cpu_core_var" "driver_sender_cpu_core_var" "driver_receiver_cpu_core_var")"
+supported_drivers['c-patched']="${driver_properties}; \
+      $(start_media_driver "${scripts_path}/c-media-driver-c-patched" "" "driver_cpu_node_var" "driver_non_isolated_cpu_cores_var" "driver_conductor_cpu_core_var" "driver_sender_cpu_core_var" "driver_receiver_cpu_core_var")"
 
 supported_drivers['c-onload']="${driver_properties}; \
       export EF_NO_FAIL=0 EF_RXQ_SIZE=${ef_vi_rxq_size} EF_TXQ_SIZE=${ef_vi_txq_size} \

@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+##
+## This build's media driver, in the shape the harness's launchers already have.
+##
+## `media-driver` and `c-media-driver` each hand their driver the two property
+## files beside them — `low-latency-driver.properties`, which the harness ships,
+## and `benchmark.properties`, which `remote-cluster-benchmarks` rewrites for
+## every run (`driver_properties`). This build's driver takes `-Dname=value`
+## instead of files (`crates/driver/src/config.rs`, `parse_properties`), so this
+## script does the conversion and execs. Anything on the command line that is not
+## a file is handed to the driver as it came.
+##
+##   DEEPMSG_DRIVER   the driver binary
+##   DEEPMSG_DIR      or a checkout to take it from (target/release/deepmsg-driver)
+##
+## ★ The process keeps the name `deepmsg-driver`. `start_media_driver` in
+## `remote-benchmarks-helper` resolves a driver's pid with `pgrep -x`, so the
+## same patch that adds this file adds the branch that looks for this name — an
+## `aeronmd` symlink would be the alternative, and it would collide with the C
+## driver's own `pkill -x aeronmd` teardown when a run compares the two.
+##
+## ★ Nothing here reads `AERON_MD`. The harness's README says a media driver may
+## be swapped through it, and `c-media-driver` hard-codes `${DIR}/aeronmd`
+## instead. Being a launcher of its own is the way that works.
+
+set -euo pipefail
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+
+if [[ -z "${DEEPMSG_DRIVER:-}" ]]; then
+  if [[ -n "${DEEPMSG_DIR:-}" ]]; then
+    DEEPMSG_DRIVER="${DEEPMSG_DIR}/target/release/deepmsg-driver"
+  else
+    echo "deepmsg-media-driver: set DEEPMSG_DRIVER (the driver binary) or DEEPMSG_DIR (its checkout)" >&2
+    exit 1
+  fi
+fi
+if [[ ! -x "${DEEPMSG_DRIVER}" ]]; then
+  echo "deepmsg-media-driver: no executable driver at ${DEEPMSG_DRIVER}" >&2
+  exit 1
+fi
+
+defines=()
+passthrough=()
+
+_read_properties() {
+  local file=$1 line
+  # `key=value` a line, `#` or blank to skip. The reference's files are written
+  # that way; `java.util.Properties` escapes do not appear in the ones the
+  # harness reads, so they are not implemented here.
+  while IFS= read -r line || [[ -n "${line}" ]]; do
+    line="${line%$'\r'}"
+    [[ -z "${line// }" ]] && continue
+    case "${line}" in \#*) continue ;; esac
+    defines+=("-D${line}")
+  done <"${file}"
+}
+
+_read_properties "${DIR}/low-latency-driver.properties"
+_read_properties "${DIR}/benchmark.properties"
+
+for argument in "$@"; do
+  if [[ -f "${argument}" ]]; then
+    _read_properties "${argument}"
+  else
+    passthrough+=("${argument}")
+  fi
+done
+
+exec "${DEEPMSG_DRIVER}" ${defines[@]+"${defines[@]}"} ${passthrough[@]+"${passthrough[@]}"}

@@ -157,6 +157,14 @@ function download_results()
 
   mkdir -p "${dest_dir}"
 
+  # Local launch shim: an empty node means "this host", so the archive is already local
+  # and the scp hop is skipped. Unchanged when a node is given.
+  if [[ -z "${server}" ]]
+  then
+    cp "${archive}" "${dest_dir}"
+    return
+  fi
+
   scp -i "${sshKeyFile}" \
    -o ConnectionAttempts="${sshConnectionAttempts}" \
    -o ConnectTimeout="${sshConnectTimeout}" \
@@ -245,6 +253,16 @@ function execute_remote_command()
   local sshKeyFile=${2}
   local server=${3}
   local command=${4}
+
+  # Local launch shim (deepmsg bench harness): the benchmarks are driven on the same
+  # machine that runs them, so an empty node means "this host" and the ssh hop is
+  # skipped. Unchanged when a node is given.
+  if [[ -z "${server}" ]]
+  then
+    bash -c "${command}"
+    return $?
+  fi
+
   ssh -i "${sshKeyFile}" \
    -o StrictHostKeyChecking=no \
    -o ConnectionAttempts="${sshConnectionAttempts}" \

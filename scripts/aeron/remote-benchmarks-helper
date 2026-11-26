@@ -37,6 +37,12 @@ function start_media_driver()
   elif [[ "${executable}" =~ /c-aeronmd-dpdk$ ]]
   then
     resolve_media_driver_pid="$(await_process_start "\$(pgrep -x '^aeronmd_dpdk\$')"); media_driver_pid="\${pid}""
+  elif [[ "${executable}" =~ /deepmsg-media-driver$ ]]
+  then
+    resolve_media_driver_pid="$(await_process_start "\$(pgrep -x '^deepmsg-driver\$')"); media_driver_pid="\${pid}""
+  elif [[ "${executable}" =~ /deepmsg-cpp-media-driver$ ]]
+  then
+    resolve_media_driver_pid="$(await_process_start "\$(pgrep -x '^deepmsg-cpp\$')"); media_driver_pid="\${pid}""
   else
     resolve_media_driver_pid="$(await_process_start "\$(pgrep -x '^aeronmd\$')"); media_driver_pid="\${pid}""
   fi
@@ -60,5 +66,5 @@ function start_media_driver()
 
 function stop_media_driver()
 {
-  echo "sudo pkill -SIGTERM '^aeronmd'; $(kill_java_process "io.aeron.driver.MediaDriver")"
+  echo "sudo pkill -SIGTERM '^aeronmd'; $(kill_java_process "io.aeron.driver.MediaDriver"); pkill -SIGTERM -x '^deepmsg-driver$'; pkill -SIGTERM -x '^deepmsg-cpp$'; true"
 }
