@@ -383,11 +383,11 @@ drivers['c']="${driver_properties}; \
       $(start_media_driver "${scripts_path}/c-media-driver" "" "driver_cpu_node_var" "driver_non_isolated_cpu_cores_var" "driver_conductor_cpu_core_var" "driver_sender_cpu_core_var" "driver_receiver_cpu_core_var")"
 
 drivers['deepmsg']="${driver_properties}; \
-      export DEEPMSG_DRIVER=${DEEPMSG_DIR}/target/release/deepmsg-driver; \
+      export DEEPMSG_DRIVER=${DEEPMSG_DRIVER:-${DEEPMSG_DIR:-}/target/release/deepmsg-driver}; \
       $(start_media_driver "${scripts_path}/deepmsg-media-driver" "" "driver_cpu_node_var" "driver_non_isolated_cpu_cores_var" "driver_conductor_cpu_core_var" "driver_sender_cpu_core_var" "driver_receiver_cpu_core_var")"
 
 drivers['deepmsg-cpp']="${driver_properties}; \
-      export DEEPMSG_CPP_DRIVER=${DEEPMSG_CPP_DRIVER}; \
+      export DEEPMSG_CPP_DRIVER=${DEEPMSG_CPP_DRIVER:-}; \
       $(start_media_driver "${scripts_path}/deepmsg-cpp-media-driver" "" "driver_cpu_node_var" "driver_non_isolated_cpu_cores_var" "driver_conductor_cpu_core_var" "driver_sender_cpu_core_var" "driver_receiver_cpu_core_var")"
 
 drivers['c-onload']="${driver_properties}; \
