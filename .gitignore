@@ -16,3 +16,8 @@ results/
 
 aeron-archive/
 
+# Cluster batch environments: the template is tracked, the real one is not.
+# It carries private addresses and key paths (plan 2026-11-26 §2.6 A′-5).
+environments/*.env
+!environments/*.env.example
+

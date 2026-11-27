@@ -115,8 +115,13 @@ onload="onload --profile=latency "
 client_drivers=()
 server_drivers=()
 declare -A drivers
-drivers=(['java']='' ['java-onload']='' ['c']='' ['c-onload']='' ['c-ef-vi']='' ['c-dpdk']='' ['c-ats']='' ['c-ats-onload']='' ['c-ats-ef-vi']='' ['c-ats-dpdk']='' ['deepmsg']='' ['deepmsg-cpp']='')
+drivers=(['java']='' ['java-onload']='' ['c']='' ['c-onload']='' ['c-ef-vi']='' ['c-dpdk']='' ['c-ats']='' ['c-ats-onload']='' ['c-ats-ef-vi']='' ['c-ats-dpdk']='' ['deepmsg']='' ['deepmsg-cpp']='' ['embedded']='')
 cluster_service="${CLUSTER_SERVICE:-echo}"
+# A′ (2026-11-27): which cluster implementation runs on the server side. The
+# client is always the reference's. `java` keeps every line of the original
+# path; `cpp`/`rust` dispatch to scripts/aeron/cluster/<impl>/launch.sh.
+server_impl="${SERVER_IMPL:-java}"
+server_driver_mode="${SERVER_DRIVER_MODE:-external}"
 # Where the results are pulled back to. The reference lands them under
 # `scripts/` beside this file; a batch that keeps its data in a directory of
 # its own sets BENCH_DOWNLOAD_DIR, so one run's tree cannot be mistaken for
@@ -170,8 +175,18 @@ do
     shift
     shift
     ;;
+  --server-impl)
+    server_impl="${2}"
+    shift
+    shift
+    ;;
+  --server-driver-mode)
+    server_driver_mode="${2}"
+    shift
+    shift
+    ;;
   -h | --help)
-    echo "${0} --client-drivers \"client-media-drivers-list-csv\" --server-drivers \"server-media-drivers-list-csv\" [--context \"\$context\"] [--onload \"\$onload_command\"] [--file-sync-level \"\${file-sync-level-csv}\"] [--mtu \"\$mtu-csv\"]  [--download-dir \"\$download_dir\"]\
+    echo "${0} --client-drivers \"client-media-drivers-list-csv\" --server-drivers \"server-media-drivers-list-csv\" [--server-impl java|cpp|rust] [--server-driver-mode external|embedded] [--context \"\$context\"] [--onload \"\$onload_command\"] [--file-sync-level \"\${file-sync-level-csv}\"] [--mtu \"\$mtu-csv\"]  [--download-dir \"\$download_dir\"]\
           the support media drivers are: ${!drivers[*]}"
     exit
     ;;
@@ -219,6 +234,190 @@ then
   unset IFS;
 fi
 
+function cluster_cell_dir()
+{
+  local node_id=${1}
+  local output_dir=${2}
+  local benchmarks_path_var=NODE${node_id}_BENCHMARKS_PATH
+  echo "${!benchmarks_path_var}/${output_dir}/node-${node_id}"
+}
+
+# One `key=value` a line, read by scripts/aeron/cluster/<impl>/launch.sh. The
+# values are the harness's own, expanded here so the remote node needs no
+# environment beyond the launcher path.
+function node_cell_properties()
+{
+  local node_id=${1}
+  local cluster_impl=${2}
+  local driver_mode=${3}
+  local fsync=${4}
+  local cluster_service=${5}
+  local output_dir=${6}
+  local benchmarks_path_var=NODE${node_id}_BENCHMARKS_PATH
+  local cluster_dir_var=NODE${node_id}_CLUSTER_DIR
+  local cluster_consensus_channel_var=NODE${node_id}_CLUSTER_CONSENSUS_CHANNEL
+  local cluster_ingress_channel_var=NODE${node_id}_CLUSTER_INGRESS_CHANNEL
+  local cluster_log_channel_var=NODE${node_id}_CLUSTER_LOG_CHANNEL
+  local cluster_replication_channel_var=NODE${node_id}_CLUSTER_REPLICATION_CHANNEL
+  local cluster_catchup_channel_var=NODE${node_id}_CLUSTER_CATCHUP_CHANNEL
+  local archive_dir_var=NODE${node_id}_ARCHIVE_DIR
+  local archive_control_channel_var=NODE${node_id}_ARCHIVE_CONTROL_CHANNEL
+  local archive_replication_channel_var=NODE${node_id}_ARCHIVE_REPLICATION_CHANNEL
+  local archive_recorder_cpu_var=NODE${node_id}_ARCHIVE_RECORDER_CPU_CORE
+  local archive_replayer_cpu_var=NODE${node_id}_ARCHIVE_REPLAYER_CPU_CORE
+  local archive_conductor_cpu_var=NODE${node_id}_ARCHIVE_CONDUCTOR_CPU_CORE
+  local consensus_module_cpu_var=NODE${node_id}_CONSENSUS_MODULE_CPU_CORE
+  local clustered_service_cpu_var=NODE${node_id}_CLUSTERED_SERVICE_CPU_CORE
+  local driver_conductor_cpu_var=NODE${node_id}_DRIVER_CONDUCTOR_CPU_CORE
+  local driver_sender_cpu_var=NODE${node_id}_DRIVER_SENDER_CPU_CORE
+  local driver_receiver_cpu_var=NODE${node_id}_DRIVER_RECEIVER_CPU_CORE
+  local non_isolated_cpu_cores_var=NODE${node_id}_NON_ISOLATED_CPU_CORES
+  local session_timeout_var=NODE${node_id}_CLUSTER_SESSION_TIMEOUT
+  local cluster_sync_var=NODE${node_id}_CLUSTER_FILE_SYNC_LEVEL
+  local local_archive_control_var=NODE${node_id}_ARCHIVE_LOCAL_CONTROL_CHANNEL
+  local archive_control_stream_var=NODE${node_id}_ARCHIVE_CONTROL_STREAM_ID
+  local archive_control_response_stream_var=NODE${node_id}_ARCHIVE_CONTROL_RESPONSE_STREAM_ID
+  local archive_local_control_stream_var=NODE${node_id}_ARCHIVE_LOCAL_CONTROL_STREAM_ID
+  local archive_id_var=NODE${node_id}_ARCHIVE_ID
+  local control_channel_var=NODE${node_id}_CLUSTER_CONTROL_CHANNEL
+  local driver_cpuset_var=NODE${node_id}_DRIVER_CPUSET
+  local archive_cpuset_var=NODE${node_id}_ARCHIVE_CPUSET
+  local local_archive_control="${!local_archive_control_var:-aeron:ipc?term-length=64k}"
+  local archive_control_stream_id="${!archive_control_stream_var:-110}"
+  local archive_control_response_stream_id="${!archive_control_response_stream_var:-120}"
+  local archive_local_control_stream_id="${!archive_local_control_stream_var:-110}"
+  local archive_id="${!archive_id_var:-23}"
+  local control_channel="${!control_channel_var:-aeron:ipc}"
+  local session_timeout="${!session_timeout_var:-}"
+  local driver_cpuset="${!driver_cpuset_var:-}"
+  local archive_cpuset="${!archive_cpuset_var:-}"
+  cat <<EOF
+impl=${cluster_impl}
+driver_mode=${driver_mode}
+benchmarks_path=${!benchmarks_path_var}
+output_dir=${output_dir}
+member_id=${node_id}
+cluster_id=${CLUSTER_ID}
+members=${CLUSTER_MEMBERS}
+appointed_leader=${CLUSTER_APPOINTED_LEADER_ID}
+aeron_dir=${AERON_DIR:-/dev/shm/aeron}
+cluster_dir=${!cluster_dir_var}
+archive_dir=${!archive_dir_var}
+ingress=${!cluster_ingress_channel_var}
+consensus=${!cluster_consensus_channel_var}
+log=${!cluster_log_channel_var}
+replication=${!cluster_replication_channel_var}
+catchup=${!cluster_catchup_channel_var:-}
+archive_control=${!archive_control_channel_var}
+archive_replication=${!archive_replication_channel_var}
+local_archive_control=${local_archive_control}
+archive_control_stream_id=${archive_control_stream_id}
+archive_control_response_stream_id=${archive_control_response_stream_id}
+archive_local_control_stream_id=${archive_local_control_stream_id}
+archive_id=${archive_id}
+control=${control_channel}
+service=${cluster_service}
+service_count=1
+service_id=0
+sync_archive=${fsync}
+sync_cluster=${!cluster_sync_var:-0}
+mtu=${mtu}
+idle_strategy=spin
+session_timeout=${session_timeout}
+driver_properties_file=${!benchmarks_path_var}/scripts/aeron/benchmark.properties
+driver_conductor_cpu=${!driver_conductor_cpu_var}
+driver_sender_cpu=${!driver_sender_cpu_var}
+driver_receiver_cpu=${!driver_receiver_cpu_var}
+archive_conductor_cpu=${!archive_conductor_cpu_var}
+archive_recorder_cpu=${!archive_recorder_cpu_var}
+archive_replayer_cpu=${!archive_replayer_cpu_var}
+cm_cpu=${!consensus_module_cpu_var}
+container_cpu=${!clustered_service_cpu_var}
+non_isolated_cpu_cores=${!non_isolated_cpu_cores_var}
+driver_cpuset=${driver_cpuset}
+archive_cpuset=${archive_cpuset}
+cpp_cluster_node=${DEEPMSG_CPP_CLUSTER_NODE:-}
+cpp_container=${DEEPMSG_CPP_CLUSTER_CONTAINER:-}
+cpp_archive=${DEEPMSG_CPP_ARCHIVE:-}
+cpp_cm=${DEEPMSG_CPP_CONSENSUS_MODULE:-}
+cpp_driver=${DEEPMSG_CPP_DRIVER:-}
+rust_driver=${DEEPMSG_RUST_DRIVER:-}
+rust_archive=${DEEPMSG_RUST_ARCHIVE:-}
+rust_cluster_node=${DEEPMSG_RUST_CLUSTER_NODE:-}
+rust_container=${DEEPMSG_RUST_CONTAINER:-}
+cnc_dump=${DEEPMSG_CNC_DUMP:-}
+EOF
+}
+
+function start_cluster_node_impl()
+{
+  local node_id=${1}
+  local cluster_impl=${2}
+  local server_driver=${3}
+  local fsync=${4}
+  local cluster_service=${5}
+  local output_dir=${6}
+  local benchmarks_path_var=NODE${node_id}_BENCHMARKS_PATH
+  local driver_mode_var=NODE${node_id}_CLUSTER_DRIVER_MODE
+  local driver_mode="${!driver_mode_var:-${server_driver_mode}}"
+  local cell_dir
+  cell_dir="$(cluster_cell_dir "${node_id}" "${output_dir}")"
+  local launcher="${!benchmarks_path_var}/scripts/aeron/cluster/${cluster_impl}/launch.sh"
+  local driver_conductor_cpu_var=NODE${node_id}_DRIVER_CONDUCTOR_CPU_CORE
+  local driver_sender_cpu_var=NODE${node_id}_DRIVER_SENDER_CPU_CORE
+  local driver_receiver_cpu_var=NODE${node_id}_DRIVER_RECEIVER_CPU_CORE
+  local props="${driver_properties}"
+  props="${props//benchmarks_path_var/${!benchmarks_path_var}}"
+  props="${props//driver_mtu_var/${mtu}}"
+  props="${props//driver_conductor_cpu_core_var/${!driver_conductor_cpu_var}}"
+  props="${props//driver_sender_cpu_core_var/${!driver_sender_cpu_var}}"
+  props="${props//driver_receiver_cpu_core_var/${!driver_receiver_cpu_var}}"
+  local cell_props
+  cell_props="$(node_cell_properties "${node_id}" "${cluster_impl}" "${driver_mode}" "${fsync}" "${cluster_service}" "${output_dir}")"
+  local command="mkdir -p \"${cell_dir}\"; ${props}; cat > \"${cell_dir}/cell.properties\" <<'CELL_PROPERTIES'
+${cell_props}
+CELL_PROPERTIES
+"
+  if [[ "${driver_mode}" == "external" ]]
+  then
+    if [[ -z "${server_driver}" ]]
+    then
+      echo "driver_mode=external for node ${node_id} but the server driver command is empty" >&2
+      exit 1
+    fi
+    command+="${server_driver} && "
+  fi
+  command+="\"${launcher}\" start \"${cell_dir}\""
+  echo "${command}"
+}
+
+function stop_cluster_node_command()
+{
+  local node_id=${1}
+  local cluster_node_class_name=${2}
+  local output_dir=${3}
+  local java_stop_function=${4:-kill_java_process}
+  local cluster_impl_var=NODE${node_id}_CLUSTER_IMPL
+  local cluster_impl="${!cluster_impl_var:-${server_impl}}"
+  if [[ "${cluster_impl}" == "java" ]]
+  then
+    echo "$(${java_stop_function} "${cluster_node_class_name}"); $(stop_media_driver)"
+    return
+  fi
+  local driver_mode_var=NODE${node_id}_CLUSTER_DRIVER_MODE
+  local driver_mode="${!driver_mode_var:-${server_driver_mode}}"
+  local benchmarks_path_var=NODE${node_id}_BENCHMARKS_PATH
+  local cell_dir
+  cell_dir="$(cluster_cell_dir "${node_id}" "${output_dir}")"
+  local launcher="${!benchmarks_path_var}/scripts/aeron/cluster/${cluster_impl}/launch.sh"
+  local command="\"${launcher}\" counters \"${cell_dir}\" || true; \"${launcher}\" stop \"${cell_dir}\" || true"
+  if [[ "${driver_mode}" == "external" ]]
+  then
+    command+="; $(stop_media_driver)"
+  fi
+  echo "${command}"
+}
+
 function start_cluster_node()
 {
   local node_id=${1}
@@ -245,6 +444,13 @@ function start_cluster_node()
   local consensus_module_cpu_var=NODE${node_id}_CONSENSUS_MODULE_CPU_CORE
   local clustered_service_cpu_var=NODE${node_id}_CLUSTERED_SERVICE_CPU_CORE
   local extra_properties_var=NODE${node_id}_EXTRA_PROPERTIES
+  local cluster_impl_var=NODE${node_id}_CLUSTER_IMPL
+  local cluster_impl="${!cluster_impl_var:-${server_impl}}"
+  if [[ "${cluster_impl}" != "java" ]]
+  then
+    start_cluster_node_impl "${node_id}" "${cluster_impl}" "${server_driver}" "${fsync}" "${cluster_service}" "${output_dir}"
+    return
+  fi
   echo "
     export JAVA_HOME=\"${!java_home_var}\" PROCESS_FILE_NAME=\"cluster-node-${node_id}-media-driver\" OUTPUT_DIR=\"${output_dir}\"\
     ; $(kill_java_process "${cluster_node_class_name}") \
@@ -468,6 +674,54 @@ do
   fi
 done
 
+case "${server_impl}" in
+  java|cpp|rust) ;;
+  *)
+    echo "Unknown --server-impl '${server_impl}': expected java, cpp or rust"
+    exit 1
+    ;;
+esac
+case "${server_driver_mode}" in
+  external|embedded) ;;
+  *)
+    echo "Unknown --server-driver-mode '${server_driver_mode}': expected external or embedded"
+    exit 1
+    ;;
+esac
+if [[ "${server_driver_mode}" == "embedded" && "${server_impl}" == "java" ]]; then
+  echo "--server-driver-mode embedded is only for cpp/rust: the Java node attaches to an external media driver"
+  exit 1
+fi
+for index in "${!server_drivers[@]}"
+do
+  server_md="${server_drivers[index]# }"
+  if [[ "${server_driver_mode}" == "embedded" && "${server_md}" != "embedded" ]]; then
+    echo "--server-driver-mode embedded requires --server-drivers embedded (got '${server_md}')"
+    exit 1
+  fi
+  if [[ "${server_driver_mode}" == "external" && "${server_md}" == "embedded" ]]; then
+    echo "--server-drivers embedded requires --server-driver-mode embedded"
+    exit 1
+  fi
+done
+# A batch's node implementations are uniform; NODE{n}_CLUSTER_IMPL can only
+# override to a value that keeps the batch nameable. Fail early on a mixed
+# batch rather than label one arm with another's impl.
+for ((n = 0; n < CLUSTER_SIZE; n++))
+do
+  node_impl_var=NODE${n}_CLUSTER_IMPL
+  node_impl="${!node_impl_var:-${server_impl}}"
+  if [[ "${node_impl}" != "${server_impl}" ]]; then
+    echo "NODE${n}_CLUSTER_IMPL='${node_impl}' differs from --server-impl '${server_impl}'; one batch, one server impl"
+    exit 1
+  fi
+done
+
+impl_suffix=""
+if [[ "${server_impl}" != "java" ]]; then
+  impl_suffix="_impl=${server_impl}"
+fi
+
 test_type="aeron-cluster"
 test_dir="${test_type}-$(date '+%Y-%m-%d-%H-%M-%S')"
 output_dir_prefix="scripts/results/${test_dir}"
@@ -479,7 +733,7 @@ do
   do
     for mtu in "${mtu_list[@]}"
     do
-      test="${test_type}_${client_md}-vs-${server_md}_${context}_fsync=${fsync}_mtu=${mtu}"
+      test="${test_type}_${client_md}-vs-${server_md}${impl_suffix}_${context}_fsync=${fsync}_mtu=${mtu}"
       echo -e "\n Testing scenario: '${test}'\n"
 
       client_driver="${drivers[${client_md}]//driver_mtu_var/${mtu}}"
@@ -512,7 +766,7 @@ do
             run=$((i + 1))
             echo -e "\n\033[1;32m### [$(date +"%Y-%m-%d %H:%M:%S")] Benchmark run #${run} ...\033[0m\n"
 
-            output_dir="${output_dir_prefix}/${client_md}-vs-${server_md}_${context}_fsync=${fsync}_mtu=${mtu}_length=${messageLength}_rate=${messageRate}/run-${run}"
+            output_dir="${output_dir_prefix}/${client_md}-vs-${server_md}${impl_suffix}_${context}_fsync=${fsync}_mtu=${mtu}_length=${messageLength}_rate=${messageRate}/run-${run}"
 
             start_client="export JVM_OPTS=\"\
             -Dio.aeron.benchmarks.aeron.connection.timeout=${connectionTimeout}\
@@ -560,7 +814,7 @@ do
               ssh_node=SSH_CLUSTER_NODE${n}
               archive_dir_var=NODE${n}_ARCHIVE_DIR
               cluster_dir_var=NODE${n}_CLUSTER_DIR
-              execute_remote_command "${!ssh_user}" "${!ssh_key_file}" "${!ssh_node}" "$(kill_java_process "${cluster_node_class_name}"); $(stop_media_driver); rm -rf \"${!cluster_dir_var}\"; rm -rf \"${!archive_dir_var}\"; true; exit"
+              execute_remote_command "${!ssh_user}" "${!ssh_key_file}" "${!ssh_node}" "$(stop_cluster_node_command "${n}" "${cluster_node_class_name}" "${output_dir}"); rm -rf \"${!cluster_dir_var}\"; rm -rf \"${!archive_dir_var}\"; true; exit"
             done
 
             for (( n=0; n<CLUSTER_SIZE; n++ ))
@@ -633,7 +887,7 @@ do
               ssh_key_file=SSH_CLUSTER_KEY_FILE${n}
               ssh_node=SSH_CLUSTER_NODE${n}
               server_benchmarks_path=NODE${n}_BENCHMARKS_PATH
-              execute_remote_command "${!ssh_user}" "${!ssh_key_file}" "${!ssh_node}" "$(stop_java_process "${cluster_node_class_name}"); $(stop_media_driver); cp /dev/shm/*-gc.log \"${!server_benchmarks_path}/${output_dir}/logs\"; cp /dev/shm/*-crash.log \"${!server_benchmarks_path}/${output_dir}/logs\"; rm /dev/shm/*-gc.log; rm /dev/shm/*-crash.log; cp /tmp/benchmarks-cluster-*.log \"${!server_benchmarks_path}/${output_dir}/logs\"; true; exit"
+              execute_remote_command "${!ssh_user}" "${!ssh_key_file}" "${!ssh_node}" "$(stop_cluster_node_command "${n}" "${cluster_node_class_name}" "${output_dir}" stop_java_process); cp /dev/shm/*-gc.log \"${!server_benchmarks_path}/${output_dir}/logs\"; cp /dev/shm/*-crash.log \"${!server_benchmarks_path}/${output_dir}/logs\"; rm /dev/shm/*-gc.log; rm /dev/shm/*-crash.log; cp /tmp/benchmarks-cluster-*.log \"${!server_benchmarks_path}/${output_dir}/logs\"; true; exit"
             done
           done
         done
