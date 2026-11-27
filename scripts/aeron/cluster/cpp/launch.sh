@@ -88,7 +88,6 @@ do_start()
   pin_tid_by_name "${node_pid}" "archive-conduct" "$(cell_prop archive_conductor_cpu)"
   pin_tid_by_name "${node_pid}" "archive-recorde" "$(cell_prop archive_recorder_cpu)"
   pin_tid_by_name "${node_pid}" "archive-replaye" "$(cell_prop archive_replayer_cpu)"
-  pin_tid_by_name "${node_pid}" "consensus-modul" "$(cell_prop cm_cpu)"
 
   # The container attaches to the CM's mark; starting it before the mark is
   # written is a start-up race that reads as "the service container died".
@@ -100,6 +99,11 @@ do_start()
   start_bg "${CELL_DIR}/container.log" "${container_cpu}" "${container}" "${container_defines[@]}"
   sleep 1
   require_alive "deepmsg-clustered-service-container" "${LAST_PID}"
+
+  # The CM's agent thread starts after the service container joins; pin it
+  # after the container is up, with a longer window than the archive agents.
+  pin_tid_by_name "${node_pid}" "consensus-modul" "$(cell_prop cm_cpu)" \
+    "$(cell_prop pin_attempts_cm 300)"
 
   up
 }

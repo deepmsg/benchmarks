@@ -164,6 +164,7 @@ archive_recorder_cpu=4
 archive_replayer_cpu=5
 cm_cpu=6
 container_cpu=7
+pin_attempts_cm=10
 non_isolated_cpu_cores=0-7
 driver_cpuset=
 archive_cpuset=

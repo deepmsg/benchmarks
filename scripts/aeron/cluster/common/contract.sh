@@ -147,7 +147,7 @@ require_alive()
   alive "${pid}" || die "${what} (pid ${pid}) did not stay up"
 }
 
-# pin_tid_by_name <pid> <comm-prefix> <cpu>
+# pin_tid_by_name <pid> <comm-prefix> <cpu> [attempts]
 # The kernel truncates comm to 15 characters; callers pass the prefix the
 # reference's names already use (`archive-recorde`, `consensus-modul`, …).
 # A silently failed pin is worse than no pin, so the read-back is checked.
@@ -156,13 +156,14 @@ pin_tid_by_name()
   local pid=${1}
   local name=${2}
   local cpu=${3}
+  local attempts=${4:-${PIN_ATTEMPTS:-100}}
   [[ -n "${cpu}" ]] || return 0
   local tid=""
   local _ attempt
   # Threads appear within the first second of a real process; the CM thread can
-  # take several seconds (measured locally at ~6 s), so ten seconds is the
-  # default and a missing thread never turns into a minute of silence per name.
-  for attempt in $(seq 1 "${PIN_ATTEMPTS:-100}")
+  # take longer because it starts after the service container joins. Callers
+  # choose the window; the default is ten seconds.
+  for attempt in $(seq 1 "${attempts}")
   do
     tid=$(ps -L -o tid=,comm= -p "${pid}" 2>/dev/null | awk -v n="${name}" 'index($2, n) == 1 { print $1; exit }' || true)
     [[ -n "${tid}" ]] && break
