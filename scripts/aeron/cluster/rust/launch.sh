@@ -71,6 +71,23 @@ write_driver_properties()
   "${DIR}/translate.sh" driver "${CELL_DIR}" >>"${target}"
 }
 
+# deepmsg-driver takes the reference aeronmd's argument shape — `-Dname=value`
+# — not a properties file path (crates/driver/src/config.rs, `from_args`,
+# "expected -Dname=value"). The C++ driver does read a file; the Rust one does
+# not, and handing it one makes it exit before the CnC exists. The file is
+# still written: it is the cell's record of what the driver was given.
+driver_args()
+{
+  local line key value
+  while IFS= read -r line
+  do
+    [[ -n "${line}" && "${line}" != \#* && "${line}" == *=* ]] || continue
+    key=${line%%=*}
+    value=${line#*=}
+    printf -- '-D%s=%s\n' "${key}" "${value}"
+  done <"${CELL_DIR}/driver.properties"
+}
+
 do_start()
 {
   load_cell
@@ -97,7 +114,9 @@ do_start()
   if [[ "${driver_mode}" == "embedded" ]]
   then
     write_driver_properties
-    start_bg "${CELL_DIR}/driver.log" "$(cell_prop driver_cpuset)" "${driver}" "${CELL_DIR}/driver.properties"
+    local -a driver_defines=()
+    mapfile -t driver_defines < <(driver_args)
+    start_bg "${CELL_DIR}/driver.log" "$(cell_prop driver_cpuset)" "${driver}" "${driver_defines[@]}"
     wait_for_cnc 60
   else
     wait_for_cnc 60

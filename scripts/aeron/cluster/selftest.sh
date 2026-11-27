@@ -88,12 +88,17 @@ chmod +x "${tmp}/bin/cpp-cnc-dump"
 cp "${tmp}/bin/cpp-cnc-dump" "${tmp}/bin/rust-cnc-dump"
 cat >"${tmp}/bin/rust-driver" <<'EOF'
 #!/usr/bin/env bash
-# The driver's argument is a properties file; make the CnC file it would make.
+# deepmsg-driver takes the reference aeronmd's shape — `-Dname=value`, no
+# properties file (crates/driver/src/config.rs, `from_args`). A positional
+# argument is the bug this stub exists to keep out: the launcher once handed
+# it driver.properties and the driver exited before making the CnC.
 dir=""
 for a in "$@"; do
-  if [[ -f "$a" ]]; then
-    dir=$(awk -F= '$1=="aeron.dir" {print $2; exit}' "$a")
-  fi
+  case "$a" in
+    -Daeron.dir=*) dir=${a#-Daeron.dir=} ;;
+    -*) ;;
+    *) echo "rust-driver: unexpected positional argument '$a'" >&2; exit 2 ;;
+  esac
 done
 [[ -n "$dir" ]] && mkdir -p "$dir" && : >"$dir/cnc.dat"
 trap 'exit 0' TERM INT
@@ -208,6 +213,11 @@ cpp_container=$("${ROOT}/cpp/translate.sh" container "${tmp}/cpp-cell")
 grep -qx -- '-Ddeepmsg.cluster.service=echo' <<<"${cpp_container}" || fail "cpp container: service"
 rust_node=$("${ROOT}/rust/translate.sh" node "${tmp}/rust-cell")
 grep -qx -- '-Daeron.cluster.file.sync.level=0' <<<"${rust_node}" || fail "rust node: cluster sync"
+# The member reaches its own archive over the *local* control stream; with the
+# built-in default (10) a member never connects to an archive started on this
+# cell's 110 (2026-11-27: `cluster: connect timeout`).
+grep -qx -- '-Daeron.archive.local.control.stream.id=110' <<<"${rust_node}" || fail "rust node: archive local control stream"
+grep -qx -- '-Daeron.archive.local.control.channel=aeron:ipc?term-length=64k' <<<"${rust_node}" || fail "rust node: archive local control channel"
 rust_driver=$("${ROOT}/rust/translate.sh" driver "${tmp}/rust-cell")
 grep -qx 'aeron.threading.mode=DEDICATED' <<<"${rust_driver}" || fail "rust driver: DEDICATED"
 pass "translations"
