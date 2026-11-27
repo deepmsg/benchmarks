@@ -32,18 +32,56 @@ emit_if_set()
   [[ -n "${2}" ]] && emit "$1" "$2" || true
 }
 
+# The ingress endpoint of one member from the six-field members string.
+# The reference appends it to the ingress channel when the channel has no
+# `endpoint` (`ConsensusModuleAgent.connectIngress`, `:3389-3392`); this
+# build does not, so the translation does it here.
+member_endpoint()
+{
+  local members=${1}
+  local member_id=${2}
+  local field=${3}
+  local -a entries fields
+  local entry
+  IFS='|' read -ra entries <<<"${members}"
+  for entry in "${entries[@]}"
+  do
+    IFS=',' read -ra fields <<<"${entry}"
+    if [[ "${fields[0]}" == "${member_id}" ]]
+    then
+      printf '%s' "${fields[field]}"
+      return 0
+    fi
+  done
+  return 1
+}
+
 node_defines()
 {
-  local aeron_dir cluster_dir archive_dir members
+  local aeron_dir cluster_dir archive_dir members ingress member_id
   aeron_dir=$(require_prop aeron_dir)
   cluster_dir=$(require_prop cluster_dir)
   archive_dir=$(require_prop archive_dir)
   members=$(require_prop members)
+  member_id=$(require_prop member_id)
+  ingress=$(require_prop ingress)
+  if [[ "${ingress}" != *"endpoint="* ]]
+  then
+    local ingress_endpoint
+    ingress_endpoint=$(member_endpoint "${members}" "${member_id}" 1) || \
+      die "no ingress endpoint for member ${member_id} in '${members}'"
+    if [[ "${ingress}" == *"?"* ]]
+    then
+      ingress+="|endpoint=${ingress_endpoint}"
+    else
+      ingress+="?endpoint=${ingress_endpoint}"
+    fi
+  fi
 
   emit aeron.dir "${aeron_dir}"
   emit aeron.cluster.dir "${cluster_dir}"
   emit aeron.cluster.id "$(require_prop cluster_id)"
-  emit aeron.cluster.member.id "$(require_prop member_id)"
+  emit aeron.cluster.member.id "${member_id}"
   emit aeron.cluster.members "${members}"
   local leader
   leader=$(cell_prop appointed_leader -1)
@@ -51,7 +89,7 @@ node_defines()
   then
     emit aeron.cluster.appointed.leader.id "${leader}"
   fi
-  emit aeron.cluster.ingress.channel "$(require_prop ingress)"
+  emit aeron.cluster.ingress.channel "${ingress}"
   emit aeron.cluster.consensus.channel "$(require_prop consensus)"
   emit aeron.cluster.log.channel "$(require_prop log)"
   emit aeron.cluster.replication.channel "$(require_prop replication)"

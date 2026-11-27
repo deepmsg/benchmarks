@@ -199,6 +199,7 @@ grep -qx -- '-Daeron.cluster.id=0' <<<"${cpp_node}" || fail "cpp node: no cluste
 grep -qx -- '-Daeron.cluster.file.sync.level=0' <<<"${cpp_node}" || fail "cpp node: cluster sync must default to 0"
 grep -qx -- '-Daeron.archive.file.sync.level=0' <<<"${cpp_node}" || fail "cpp node: archive sync"
 grep -qx -- '-Daeron.cluster.members=0,127.0.0.1:20000,127.0.0.1:20001,127.0.0.1:20002,127.0.0.1:20003,127.0.0.1:20004' <<<"${cpp_node}" || fail "cpp node: members"
+grep -qx -- '-Daeron.cluster.ingress.channel=aeron:udp?interface=127.0.0.1|endpoint=127.0.0.1:20000' <<<"${cpp_node}" || fail "cpp node: ingress endpoint not appended"
 if grep -q -- '-D.*=$' <<<"${cpp_node}"
 then
   fail "cpp node: an empty -D value"
