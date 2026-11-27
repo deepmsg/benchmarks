@@ -109,8 +109,14 @@ binary_version()
 }
 
 jar="${CLIENT_BENCHMARKS_PATH:-}/benchmarks-all/build/libs/benchmarks.jar"
-require_file "java.javap" "${CLIENT_JAVA_HOME:-}/bin/javap"
-require_file "harness.jar" "${jar}"
+# The C++/Rust member hosts need no JDK (only the client does), and the C6
+# images carry a JRE without `javap`. The Java side is checked on ctrl; a
+# non-Java member checks its own binaries and prints the jar sha when present.
+if [[ "${SERVER_IMPL:-java}" == "java" ]]
+then
+  require_file "java.javap" "${CLIENT_JAVA_HOME:-}/bin/javap"
+  require_file "harness.jar" "${jar}"
+fi
 case "${SERVER_IMPL:-java}" in
   java) ;;
   cpp)
