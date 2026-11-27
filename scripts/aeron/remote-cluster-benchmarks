@@ -239,7 +239,16 @@ function cluster_cell_dir()
   local node_id=${1}
   local output_dir=${2}
   local benchmarks_path_var=NODE${node_id}_BENCHMARKS_PATH
-  echo "${!benchmarks_path_var}/${output_dir}/node-${node_id}"
+  # The start call passes the absolute `${benchmarks_path}/${output_dir}`;
+  # the stop call passes the relative `output_dir`. Both must name the same
+  # directory, or start and stop operate on two different cells (2026-11-27:
+  # the C++ node ran under a doubled path and the stop found nothing).
+  if [[ "${output_dir}" == /* ]]
+  then
+    echo "${output_dir}/node-${node_id}"
+  else
+    echo "${!benchmarks_path_var}/${output_dir}/node-${node_id}"
+  fi
 }
 
 # One `key=value` a line, read by scripts/aeron/cluster/<impl>/launch.sh. The

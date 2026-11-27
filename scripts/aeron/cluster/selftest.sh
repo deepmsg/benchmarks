@@ -212,6 +212,20 @@ rust_driver=$("${ROOT}/rust/translate.sh" driver "${tmp}/rust-cell")
 grep -qx 'aeron.threading.mode=DEDICATED' <<<"${rust_driver}" || fail "rust driver: DEDICATED"
 pass "translations"
 
+# ---- cell directory -------------------------------------------------------
+echo "== cell directory"
+extract_function()
+{
+  awk "/^function $1\\(\\)/{f=1} f{print} f&&/^}/{exit}" "${ROOT}/../remote-cluster-benchmarks"
+}
+eval "$(extract_function cluster_cell_dir)"
+NODE0_BENCHMARKS_PATH=/x
+[[ "$(cluster_cell_dir 0 scripts/results/t)" == "/x/scripts/results/t/node-0" ]] || \
+  fail "relative output_dir must resolve under the benchmarks path"
+[[ "$(cluster_cell_dir 0 /x/scripts/results/t)" == "/x/scripts/results/t/node-0" ]] || \
+  fail "absolute output_dir must not be prefixed again"
+pass "start and stop name the same cell"
+
 # ---- preflight ------------------------------------------------------------
 echo "== preflight"
 if "${ROOT}/common/preflight-env.sh" "${ROOT}/../../../environments/c6.env.example" >/dev/null 2>&1
