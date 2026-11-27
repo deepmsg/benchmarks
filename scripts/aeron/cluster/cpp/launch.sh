@@ -64,6 +64,9 @@ do_start()
     # cluster's own state is cleared.
     rm -rf "${cluster_dir}" "${archive_dir}"
   fi
+  # The Java arm is started cold before every cell; this one starts the same
+  # way, or a cpp/java ratio measures the page cache.
+  drop_caches_and_trim
   mkdir -p "${aeron_dir}" "${cluster_dir}" "${archive_dir}"
 
   if [[ "${driver_mode}" == "external" ]]

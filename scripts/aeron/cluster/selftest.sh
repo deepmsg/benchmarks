@@ -269,6 +269,10 @@ echo "== lifecycle (stubs)"
 # The stubs have no named agent threads; keep the pin wait short so the test
 # checks the verbs rather than spending ten seconds per absent thread.
 export PIN_ATTEMPTS=10
+# The launchers drop the page cache before a cell, the way the Java arm is
+# started. A stub cell is not a measurement, and dropping the developer's page
+# cache on every selftest run is rude, so this run turns it off.
+export DEEPMSG_CACHE_DROP=0
 mkdir -p "${tmp}/cpp-cell/aeron"
 : >"${tmp}/cpp-cell/aeron/cnc.dat"
 "${ROOT}/cpp/launch.sh" start "${tmp}/cpp-cell" >/dev/null

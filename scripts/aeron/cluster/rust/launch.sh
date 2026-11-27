@@ -109,6 +109,8 @@ do_start()
   else
     rm -rf "${cluster_dir}" "${archive_dir}"
   fi
+  # Same cold start as the Java arm (contract.sh); see the comment there.
+  drop_caches_and_trim
   mkdir -p "${aeron_dir}" "${cluster_dir}" "${archive_dir}"
 
   if [[ "${driver_mode}" == "embedded" ]]

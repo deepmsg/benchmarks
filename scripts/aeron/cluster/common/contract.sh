@@ -29,6 +29,26 @@ die()
   exit 1
 }
 
+# The reference harness drops the page cache and trims the filesystem before
+# every Java cell (`remote-cluster-benchmarks`, the `sync; drop_caches;
+# fstrim --all` in the node start command). A cpp/rust cell that skips it
+# starts warm while the Java cell starts cold, and no reading taken across the
+# two is comparable. Same three commands, same place: after the directories
+# are removed, before the driver starts.
+#
+# `DEEPMSG_CACHE_DROP=0` turns it off for a caller that is not measuring — the
+# selftest, whose cells are stubs on a developer's machine.
+drop_caches_and_trim()
+{
+  [[ "${DEEPMSG_CACHE_DROP:-1}" == "0" ]] && return 0
+  sync
+  if ! echo 3 > /proc/sys/vm/drop_caches 2>/dev/null
+  then
+    log "could not drop caches (not root, or /proc not writable); the cell starts warm"
+  fi
+  fstrim --all >/dev/null 2>&1 || true
+}
+
 log()
 {
   echo "[$(date --rfc-3339=seconds)] $*" >&2
