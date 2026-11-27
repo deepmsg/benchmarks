@@ -159,10 +159,10 @@ pin_tid_by_name()
   [[ -n "${cpu}" ]] || return 0
   local tid=""
   local _ attempt
-  # Threads appear within the first second of a real process; three seconds is
-  # generous and keeps a missing thread (a stub, a wrong prefix) from turning
-  # into a minute of silence per name.
-  for attempt in $(seq 1 "${PIN_ATTEMPTS:-30}")
+  # Threads appear within the first second of a real process; the CM thread can
+  # take several seconds (measured locally at ~6 s), so ten seconds is the
+  # default and a missing thread never turns into a minute of silence per name.
+  for attempt in $(seq 1 "${PIN_ATTEMPTS:-100}")
   do
     tid=$(ps -L -o tid=,comm= -p "${pid}" 2>/dev/null | awk -v n="${name}" 'index($2, n) == 1 { print $1; exit }' || true)
     [[ -n "${tid}" ]] && break

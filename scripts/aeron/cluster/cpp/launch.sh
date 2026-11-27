@@ -90,6 +90,11 @@ do_start()
   pin_tid_by_name "${node_pid}" "archive-replaye" "$(cell_prop archive_replayer_cpu)"
   pin_tid_by_name "${node_pid}" "consensus-modul" "$(cell_prop cm_cpu)"
 
+  # The container attaches to the CM's mark; starting it before the mark is
+  # written is a start-up race that reads as "the service container died".
+  wait_for_file "${cluster_dir}/cluster-mark.dat" 30 || \
+    die "no ${cluster_dir}/cluster-mark.dat after 30s"
+
   local -a container_defines=()
   mapfile -t container_defines < <("${DIR}/translate.sh" container "${CELL_DIR}")
   start_bg "${CELL_DIR}/container.log" "${container_cpu}" "${container}" "${container_defines[@]}"

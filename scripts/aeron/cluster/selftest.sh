@@ -58,10 +58,28 @@ trap 'exit 0' TERM INT
 while :; do sleep 1; done
 EOF
 chmod +x "${tmp}/bin/sleeper"
-cp "${tmp}/bin/sleeper" "${tmp}/bin/cpp-node"
 cp "${tmp}/bin/sleeper" "${tmp}/bin/cpp-container"
-cp "${tmp}/bin/sleeper" "${tmp}/bin/rust-cm"
 cp "${tmp}/bin/sleeper" "${tmp}/bin/rust-container"
+cat >"${tmp}/bin/cluster-node-stub" <<'EOF'
+#!/usr/bin/env bash
+# The CM writes cluster-mark.dat; the launcher waits for it before the
+# container starts.
+dir=""
+for a in "$@"; do
+  case "$a" in
+    -Daeron.cluster.dir=*) dir=${a#-Daeron.cluster.dir=} ;;
+  esac
+done
+if [[ -n "$dir" ]]; then
+  mkdir -p "$dir"
+  : >"$dir/cluster-mark.dat"
+fi
+trap 'exit 0' TERM INT
+while :; do sleep 1; done
+EOF
+chmod +x "${tmp}/bin/cluster-node-stub"
+cp "${tmp}/bin/cluster-node-stub" "${tmp}/bin/cpp-node"
+cp "${tmp}/bin/cluster-node-stub" "${tmp}/bin/rust-cm"
 cat >"${tmp}/bin/cpp-cnc-dump" <<'EOF'
 #!/usr/bin/env bash
 echo "0 loss entries"
@@ -222,6 +240,9 @@ pass "preflight"
 
 # ---- lifecycle ------------------------------------------------------------
 echo "== lifecycle (stubs)"
+# The stubs have no named agent threads; keep the pin wait short so the test
+# checks the verbs rather than spending ten seconds per absent thread.
+export PIN_ATTEMPTS=10
 mkdir -p "${tmp}/cpp-cell/aeron"
 : >"${tmp}/cpp-cell/aeron/cnc.dat"
 "${ROOT}/cpp/launch.sh" start "${tmp}/cpp-cell" >/dev/null

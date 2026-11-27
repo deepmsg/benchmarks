@@ -99,12 +99,10 @@ binary_version()
   local path=${1}
   if [[ -n "${path}" && -x "${path}" ]]
   then
-    if "${path}" --version >/dev/null 2>&1
-    then
-      "${path}" --version 2>&1 | head -1
-    else
-      printf '<no --version>'
-    fi
+    # Do not execute a cluster binary to ask for a version: several of them
+    # treat an unknown flag as "start anyway" and the probe would become a
+    # member. The sha256 is the fingerprint; READMEs carry the version string.
+    printf '<sha256 is the fingerprint>'
   else
     printf '<missing:%s>' "${path}"
   fi

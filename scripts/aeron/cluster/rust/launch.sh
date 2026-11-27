@@ -114,6 +114,10 @@ do_start()
   sleep 1
   require_alive "deepmsg-cluster-node" "${LAST_PID}"
 
+  # Same race as the C++ arm: the container needs the CM's mark.
+  wait_for_file "${cluster_dir}/cluster-mark.dat" 30 || \
+    die "no ${cluster_dir}/cluster-mark.dat after 30s"
+
   local -a container_defines=()
   mapfile -t container_defines < <("${DIR}/translate.sh" container "${CELL_DIR}")
   start_bg "${CELL_DIR}/container.log" "$(cell_prop container_cpu)" "${container}" "${container_defines[@]}"
