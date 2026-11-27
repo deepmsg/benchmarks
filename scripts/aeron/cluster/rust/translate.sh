@@ -57,6 +57,14 @@ node_defines()
   emit aeron.cluster.cycle.threshold 1ms
   emit aeron.cluster.service.cycle.threshold 1ms
   emit_if_set aeron.cluster.session.timeout "$(cell_prop session_timeout)"
+
+  # The member's own archive is reached over the *local* control channel and
+  # stream (`ConsensusModule.java:2114-2117`), and the archive process below
+  # is given the same two values. Without them the CM falls back to
+  # `AeronArchive`'s built-in defaults (a stream-10 IPC channel), which match a
+  # default-configured archive and nothing this cell starts.
+  emit aeron.archive.local.control.channel "$(require_prop local_archive_control)"
+  emit aeron.archive.local.control.stream.id "$(cell_prop archive_local_control_stream_id 110)"
 }
 
 archive_defines()
